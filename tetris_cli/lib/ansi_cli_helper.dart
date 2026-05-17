@@ -72,3 +72,8 @@ void gotoxy(int x, int y) {
   }
   stdout.write('\u001b[$y;${x}H');
 }
+
+
+void clearScreen() {
+  stdout.write('\x1B[2J\x1B[H');
+}

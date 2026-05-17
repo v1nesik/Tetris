@@ -5,13 +5,13 @@ import 'blocks.dart';
 import '../ansi_cli_helper.dart' as ansi;
 
 const int heightBoard = 17; // высота игровой доски
-const int widthBoard = 13; // ширина игровой доски
+const int widthBoard = 11; // ширина игровой доски
 
 // тип заполнения ячеек игровой доски
 const int posFree = 0; // свободное место
 const int posFilled = 1; // заполненное место
 const int posBoarder = 2; // граница
-
+int record = 0; // рекорд
 late List<List<int>> mainBoard; // основная доска
 late List<List<int>> mainCpy; // копия основной доски
 late List<List<int>> mblock; // блок c фигурой
@@ -28,6 +28,7 @@ bool get isGameOver => _isGameOver;
 
 int _delay =
     500; // начальная задержка между шагами игрового цикла (в миллисекундах)
+int levelspeed = 1; // начальный уровень скорости
 
 // lib/src/board.dart
 // Функция отрисовки основной доски
@@ -46,20 +47,15 @@ void drawBoard() {
     }
     stdout.write('\n');
   }
-  // отрисовываем нижнюю границу
-  stdout.write('🟥');
-  stdout.write('${'🟥' * 8}\n');
-  displayScore();
+// отрисовываем нижнюю границу (полная ширина)
+  stdout.write('🟥' * (widthBoard - 1)); // автоматически подстроится под ширину
+  stdout.write('\n');
 }
 
 void drawBoardNextBlock() {
-  // Ставим курсор в начало области превью и пишем заголовок (перезаписывая старый)
-  ansi.gotoxy(widthBoard * 2 + 2, 1);
-  stdout.write('Next:');
-
-  // Рисуем блок
+  // Рисуем следующий блок на уровне нижней части поля
   for (int i = 0; i < 4; i++) {
-    ansi.gotoxy(widthBoard * 2 + 2, 10 + i);
+    ansi.gotoxy(widthBoard * 2 + 2, (heightBoard - 2) - 4 + i);
     for (int j = 0; j < 4; j++) {
       if (nextBlock[i][j] == 1) {
         stdout.write('⬜');
@@ -67,7 +63,6 @@ void drawBoardNextBlock() {
         stdout.write('⬛');
       }
     }
-    // Добавляем пробелы в конце строки, чтобы стереть лишнее
     stdout.write('    ');
   }
 }
@@ -92,10 +87,19 @@ void clearLine() {
           mainBoard[k][idx] = mainBoard[k - 1][idx];
         }
       }
+
+      // Обнуляем верхнюю строку (кроме границ)
+      for (int idx = 1; idx <= widthBoard - 3; idx++) {
+        mainBoard[0][idx] = posFree;
+      }
+
       // увеличение очков
       scoreGame += 10;
       updateSpeed();
       displayScore();
+      recordScore();
+
+      j--; // проверяем эту же строку снова, так как она теперь содержит строки сверху
     }
   }
 }
@@ -112,10 +116,10 @@ void newBlock() {
   // добавляем новый блок на основную доску
   for (int i = 0; i < 4; i++) {
     for (int j = 0; j < 4; j++) {
-      mainBoard[i][x + j] = mainCpy[i][x + j] + mblock[i][j];
+      mainBoard[y + i][x + j] = mainCpy[y + i][x + j] + mblock[i][j];
 
       // проверка на пересечение
-      if (mainBoard[i][x + j] > 1) {
+      if (mainBoard[y + i][x + j] > 1) {
         _isGameOver = true; // игра окончена
       }
     }
@@ -127,7 +131,10 @@ void moveBlock(int x2, int y2) {
   // убираем фигуру с текущей позиции
   for (int i = 0; i < 4; i++) {
     for (int j = 0; j < 4; j++) {
-      if (x + j >= 0) {
+      if (y + i >= 0 &&
+          y + i < heightBoard &&
+          x + j >= 0 &&
+          x + j < widthBoard) {
         mainBoard[y + i][x + j] -= mblock[i][j];
       }
     }
@@ -140,7 +147,10 @@ void moveBlock(int x2, int y2) {
   // добавляем фигуру на новую позицию
   for (int i = 0; i < 4; i++) {
     for (int j = 0; j < 4; j++) {
-      if (x + j >= 0) {
+      if (y + i >= 0 &&
+          y + i < heightBoard &&
+          x + j >= 0 &&
+          x + j < widthBoard) {
         mainBoard[y + i][x + j] += mblock[i][j];
       }
     }
@@ -217,43 +227,47 @@ void rotateBlock() {
 
 void savePresentBoardToCpy() {
   for (int i = 0; i < heightBoard - 1; i++) {
-    for (int j = 0; j < widthBoard - 1; j++) {
+    for (int j = 0; j < widthBoard; j++) {
       mainCpy[i][j] = mainBoard[i][j];
     }
   }
 }
 
 // Функция для обработки нажатия клавиш
+// Функция для обработки нажатия клавиш
 void controlUserInput() {
+  // Если подписка уже есть - не создаём новую
+  if (_subscription != null) return;
+
   stdin.echoMode = false;
   stdin.lineMode = false;
   _subscription = stdin.listen((data) {
     int key = data.first;
     switch (key) {
-      case 119: // W – поворот фигуры
+      case 119:
         rotateBlock();
         break;
-      case 97: // A - влево
+      case 97:
         if (!isFilledBlock(x - 1, y)) {
           moveBlock(x - 1, y);
         }
         break;
-      case 115: // S - вниз
+      case 115:
         if (!isFilledBlock(x, y + 1)) {
           moveBlock(x, y + 1);
         }
         break;
-      case 100: // D - вправо
+      case 100:
         if (!isFilledBlock(x + 1, y)) {
           moveBlock(x + 1, y);
         }
         break;
-      case 112: // P - пауза
+      case 112:
         pauseGame();
         break;
-      case 113: // Q - выход
+      case 113:
         _isGameOver = true;
-
+        break;
       default:
         break;
     }
@@ -262,40 +276,8 @@ void controlUserInput() {
 
 // Функция для инициализации игры
 initGame() {
-  scoreGame = 0; // обнуляем набранные очки
-  mainBoard = List.generate(
-    heightBoard,
-    (_) => List.filled(widthBoard, posFree),
-  );
-  mainCpy = List.generate(
-    heightBoard,
-    (_) => List.filled(widthBoard, posFree),
-  );
-  mblock = List.generate(
-    4,
-    (_) => List.filled(4, posFree),
-  );
-
-  initDraw();
-  controlUserInput();
-}
-
-// Функция инициализации основной доски
-void initDraw() {
-  // Заполняем границу игровой зоны на основной
-  // и вспомогательной доске
-  for (int i = 0; i <= heightBoard - 2; i++) {
-    for (int j = 0; j <= widthBoard - 2; j++) {
-      if (j == 0 || j == widthBoard - 2 || i == heightBoard - 2) {
-        mainBoard[i][j] = posBoarder;
-        mainCpy[i][j] = posBoarder;
-      }
-    }
-  }
-
-  nextBlock = getNewBlock(); // 1. сначала создаём следующий блок
-  newBlock(); // 2. создаём текущий блок (он возьмёт nextBlock и создаст новый nextBlock)
-  drawBoard(); // 3. рисуем доску
+  record = loadRecordfromFile();
+  controlUserInput(); // ← ТОЛЬКО ОДИН РАЗ ПРИ СТАРТЕ
 }
 
 // Функция обработки шага игрового цикла
@@ -309,8 +291,6 @@ void nextStep() {
     clearLine();
     savePresentBoardToCpy();
     newBlock();
-    drawBoard();
-    drawBoardNextBlock();
   }
 }
 // Функция увеличения скорости каждые 50 очков
@@ -321,76 +301,16 @@ void updateSpeed() {
     if (_delay < 100) {
       _delay = 100; // устанавливаем минимальную задержку
     }
+    levelspeed = (500 / _delay).round();
+    if (levelspeed < 1) levelspeed = 1;
+    if (levelspeed > 10) levelspeed = 10;
+    displaySpeed();
   }
 }
 
 // Функция запуска игрового цикла
 Future<void> start() async {
-  while (!isGameOver) {
-    // пока игра не окончена
-    nextStep();
-    await Future.delayed(Duration(milliseconds: _delay));
-  }
-
-  ansi.gotoxy(0, heightBoard + 5);
-  // завершаем игру
-
-  ansi.setTextColor(ansi.yellowTColor);
-  stdout.write('===============\n'
-      '~~~Game Over~~~\n'
-      '===============\n');
-  ansi.setBackgroundColor(ansi.blueBgColor);
-  stdout.writeln('Score: $scoreGame ');
-  await Future.delayed(const Duration(seconds: 5));
-  
-  // Выводим вопрос ПЕРЕД отменой подписки
-  stdout.write('\nPlay again? (y/n): ');
-  stdout.flush();
-  
-  // Теперь завершаем подписку на ввод
-  _subscription?.cancel();
-  
-  // Даем время на завершение потока
-  await Future.delayed(const Duration(milliseconds: 100));
-  
-  bool playAgain = await askRestart();
-  
-  // Очищаем экран перед выходом или перезапуском
-  try {
-    ansi.reset();
-  } catch (e) {
-    // Игнорируем ошибки при очистке
-  }
-  
-  if (!playAgain) {
-    exit(0);
-  }
-}
-
-Future<bool> askRestart() async {
-  try {
-    // Восстанавливаем режимы stdin перед чтением
-    stdin.echoMode = false;
-    stdin.lineMode = false;
-    
-    // Читаем один байт в текущем режиме
-    int key = stdin.readByteSync();
-    
-    if (key == 121 || key == 89) {
-      // y (121) или Y (89) - перезапускаем игру
-      _isGameOver = false;
-      _delay = 500;
-      ansi.clear();
-      initGame();
-      return true;
-    } else {
-      // n или другой ввод - выход
-      return false;
-    }
-  } catch (e) {
-    // Если не можем прочитать, просто выходим
-    return false;
-  }
+  await runGame();
 }
 
 // Кнопка паузы
@@ -405,7 +325,8 @@ void pauseGame() {
   // Ждем именно клавишу g для продолжения
   while (true) {
     int key = stdin.readByteSync();
-    if (key == 103) { // g - продолжить
+    if (key == 103) {
+      // g - продолжить
       break;
     }
   }
@@ -420,6 +341,103 @@ void pauseGame() {
 
 // вывод очков в реальном времени
 void displayScore() {
-  ansi.gotoxy(widthBoard * 2 + 2, 0);
-  stdout.write('Score: $scoreGame');
+  ansi.gotoxy(widthBoard * 2 + 2, heightBoard - 2);
+  stdout.write('Score: $scoreGame  ');
+}
+
+void recordScore() {
+  if (scoreGame > record) {
+    record = scoreGame;
+    saveRecord();
+  }
+}
+
+void saveRecord() {
+  try {
+    File('record.txt').writeAsStringSync(record.toString());
+  } catch (e) {
+    // Игнорируем ошибки при сохранении рекорда
+  }
+}
+
+int loadRecordfromFile() {
+  try {
+    String content = File('record.txt').readAsStringSync();
+    return int.parse(content);
+  } catch (e) {
+    // Если файл не найден или содержимое некорректно, возвращаем 0
+    return 0;
+  }
+}
+
+Future<void> runGame() async {
+  _isGameOver = false;
+  scoreGame = 0;
+  _delay = 500;
+  levelspeed = 1;
+  mainBoard = List.generate(
+    heightBoard,
+    (_) => List.filled(widthBoard, posFree),
+  );
+  mainCpy = List.generate(
+    heightBoard,
+    (_) => List.filled(widthBoard, posFree),
+  );
+  mblock = List.generate(
+    4,
+    (_) => List.filled(4, posFree),
+  );
+
+  for (int i = 0; i <= heightBoard - 2; i++) {
+    for (int j = 0; j <= widthBoard - 2; j++) {
+      if (j == 0 || j == widthBoard - 2 || i == heightBoard - 2) {
+        mainBoard[i][j] = posBoarder;
+        mainCpy[i][j] = posBoarder;
+      }
+    }
+  }
+
+  nextBlock = getNewBlock();
+  newBlock();
+  drawBoardNextBlock();
+  drawBoard();
+  displayScore();
+  displaySpeed();
+
+  // НЕ ВЫЗЫВАЕМ controlUserInput() здесь!
+
+  while (!_isGameOver) {
+    nextStep();
+    await Future.delayed(Duration(milliseconds: _delay));
+  }
+
+  ansi.gotoxy(0, heightBoard + 5);
+  ansi.setTextColor(ansi.yellowTColor);
+  stdout.write('===============\n'
+      '~~~Game Over~~~\n'
+      '===============\n');
+  stdout.writeln('Score: $scoreGame ');
+  stdout.writeln('Record: $record ');
+
+  await Future.delayed(const Duration(seconds: 2));
+
+  _subscription?.pause();
+
+  stdout.write('\nPlay again? (y/n): ');
+  int key = stdin.readByteSync();
+
+  if (key == 121 || key == 89) {
+    ansi.clearScreen();
+    _subscription?.resume();
+    await runGame();
+  } else {
+    _subscription?.cancel();
+    ansi.reset();
+    exit(0);
+  }
+}
+
+void displaySpeed() {
+  ansi.gotoxy(widthBoard * 2 + 2, heightBoard - 1); // на строку рекорда
+  stdout.write('Record: $record  Speed: $levelspeed  ');
 }
